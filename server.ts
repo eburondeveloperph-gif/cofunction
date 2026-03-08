@@ -1,15 +1,41 @@
+import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import { PrismaClient } from "@prisma/client";
+import pg from "pg";
 import { exec } from "child_process";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
-const prisma = new PrismaClient();
+
+const pool = new pg.Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+// Auto-create tables on first run
+async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      title TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      text TEXT NOT NULL,
+      is_final BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+}
 
 async function startServer() {
+  await initDb();
+
   const app = express();
-  const PORT = 3000;
+  const PORT = 3001;
 
   app.use(express.json());
 
@@ -38,15 +64,16 @@ async function startServer() {
       const query = req.query.q as string;
       if (!query) return res.json([]);
 
-      const messages = await prisma.message.findMany({
-        where: {
-          text: { contains: query, mode: 'insensitive' }
-        },
-        include: { conversation: true },
-        orderBy: { createdAt: 'desc' },
-        take: 10
-      });
-      res.json(messages);
+      const { rows } = await pool.query(
+        `SELECT m.*, c.title as conversation_title
+         FROM messages m
+         JOIN conversations c ON c.id = m.conversation_id
+         WHERE m.text ILIKE $1
+         ORDER BY m.created_at DESC
+         LIMIT 10`,
+        [`%${query}%`]
+      );
+      res.json(rows);
     } catch (error) {
       console.error("Memory search error:", error);
       res.status(500).json({ error: "Failed to search memory" });
@@ -56,10 +83,10 @@ async function startServer() {
   // Get all conversations
   app.get("/api/conversations", async (req, res) => {
     try {
-      const conversations = await prisma.conversation.findMany({
-        orderBy: { updatedAt: "desc" },
-      });
-      res.json(conversations);
+      const { rows } = await pool.query(
+        `SELECT * FROM conversations ORDER BY updated_at DESC`
+      );
+      res.json(rows);
     } catch (error) {
       console.error("Error fetching conversations:", error);
       res.status(500).json({ error: "Failed to fetch conversations" });
@@ -69,14 +96,18 @@ async function startServer() {
   // Get a single conversation with messages
   app.get("/api/conversations/:id", async (req, res) => {
     try {
-      const conversation = await prisma.conversation.findUnique({
-        where: { id: req.params.id },
-        include: { messages: { orderBy: { createdAt: "asc" } } },
-      });
-      if (!conversation) {
+      const { rows: convRows } = await pool.query(
+        `SELECT * FROM conversations WHERE id = $1`,
+        [req.params.id]
+      );
+      if (convRows.length === 0) {
         return res.status(404).json({ error: "Conversation not found" });
       }
-      res.json(conversation);
+      const { rows: msgRows } = await pool.query(
+        `SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC`,
+        [req.params.id]
+      );
+      res.json({ ...convRows[0], messages: msgRows });
     } catch (error) {
       console.error("Error fetching conversation:", error);
       res.status(500).json({ error: "Failed to fetch conversation" });
@@ -87,10 +118,11 @@ async function startServer() {
   app.post("/api/conversations", async (req, res) => {
     try {
       const { title } = req.body;
-      const conversation = await prisma.conversation.create({
-        data: { title: title || "New Conversation" },
-      });
-      res.json(conversation);
+      const { rows } = await pool.query(
+        `INSERT INTO conversations (title) VALUES ($1) RETURNING *`,
+        [title || "New Conversation"]
+      );
+      res.json(rows[0]);
     } catch (error) {
       console.error("Error creating conversation:", error);
       res.status(500).json({ error: "Failed to create conversation" });
@@ -101,22 +133,19 @@ async function startServer() {
   app.post("/api/conversations/:id/messages", async (req, res) => {
     try {
       const { role, text, isFinal } = req.body;
-      const message = await prisma.message.create({
-        data: {
-          conversationId: req.params.id,
-          role,
-          text,
-          isFinal: isFinal ?? true,
-        },
-      });
-      
-      // Update conversation's updatedAt
-      await prisma.conversation.update({
-        where: { id: req.params.id },
-        data: { updatedAt: new Date() },
-      });
-      
-      res.json(message);
+      const { rows } = await pool.query(
+        `INSERT INTO messages (conversation_id, role, text, is_final)
+         VALUES ($1, $2, $3, $4) RETURNING *`,
+        [req.params.id, role, text, isFinal ?? true]
+      );
+
+      // Update conversation's updated_at
+      await pool.query(
+        `UPDATE conversations SET updated_at = now() WHERE id = $1`,
+        [req.params.id]
+      );
+
+      res.json(rows[0]);
     } catch (error) {
       console.error("Error adding message:", error);
       res.status(500).json({ error: "Failed to add message" });
