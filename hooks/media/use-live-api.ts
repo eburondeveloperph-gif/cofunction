@@ -23,7 +23,7 @@ import { GenAILiveClient } from '../../lib/genai-live-client';
 import { LiveConnectConfig, Modality, LiveServerToolCall, GoogleGenAI } from '@google/genai';
 import { AudioStreamer } from '../../lib/audio-streamer';
 import { audioContext, pcmBase64ToWavBase64 } from '../../lib/utils';
-import VolMeterWorket from '../../lib/worklets/vol-meter';
+import VolMeterWorklet from '../../lib/worklets/vol-meter';
 import { useLogStore, useSettings } from '@/lib/state';
 
 export type UseLiveApiResults = {
@@ -58,7 +58,7 @@ export function useLiveApi({
       audioContext({ id: 'audio-out' }).then((audioCtx: AudioContext) => {
         audioStreamerRef.current = new AudioStreamer(audioCtx);
         audioStreamerRef.current
-          .addWorklet<any>('vumeter-out', VolMeterWorket, (ev: any) => {
+          .addWorklet<any>('vumeter-out', VolMeterWorklet, (ev: any) => {
             setVolume(ev.data.volume);
           })
           .then(() => {
