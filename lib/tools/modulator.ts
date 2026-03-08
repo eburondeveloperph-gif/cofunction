@@ -111,5 +111,40 @@ export const modulatorTools: FunctionCall[] = [
     },
     isEnabled: true,
     scheduling: FunctionResponseScheduling.INTERRUPT,
+  },
+  {
+    name: 'save_user_fact',
+    description: 'Saves a persistent fact or preference about the user to long-term memory. Use this whenever the user mentions something personal (e.g., likes/dislikes, family details, life events) so you can remember it for future conversations.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        fact: {
+          type: 'STRING',
+          description: 'The fact to remember (e.g., "User has a dog named Max", "User hates tomatoes").',
+        },
+        category: {
+          type: 'STRING',
+          description: 'A category for the fact (e.g., "preference", "family", "work", "general").',
+        }
+      },
+      required: ['fact', 'category'],
+    },
+    isEnabled: true,
+    scheduling: FunctionResponseScheduling.INTERRUPT,
+  },
+  {
+    name: 'get_user_facts',
+    description: 'Retrieves all persistent facts and preferences you have learned about the user over time.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        category: {
+          type: 'STRING',
+          description: 'Optional category to filter facts by.',
+        }
+      }
+    },
+    isEnabled: true,
+    scheduling: FunctionResponseScheduling.INTERRUPT,
   }
 ];

@@ -28,6 +28,12 @@ async function initDb() {
       is_final BOOLEAN NOT NULL DEFAULT true,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS user_facts (
+      id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      fact TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'general',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
 }
 
@@ -77,6 +83,63 @@ async function startServer() {
     } catch (error) {
       console.error("Memory search error:", error);
       res.status(500).json({ error: "Failed to search memory" });
+    }
+  });
+
+  // Get memory summary (recent conversations + user facts for context injection)
+  app.get("/api/memory/summary", async (req, res) => {
+    try {
+      // Get last 5 conversations with their last few messages
+      const { rows: recentConvs } = await pool.query(
+        `SELECT c.id, c.title, c.updated_at,
+          (SELECT json_agg(sub ORDER BY sub.created_at ASC)
+           FROM (SELECT role, text, created_at FROM messages
+                 WHERE conversation_id = c.id AND is_final = true
+                 ORDER BY created_at DESC LIMIT 6) sub
+          ) as recent_messages
+         FROM conversations c
+         ORDER BY c.updated_at DESC
+         LIMIT 5`
+      );
+
+      // Get all user facts
+      const { rows: facts } = await pool.query(
+        `SELECT fact, category FROM user_facts ORDER BY created_at DESC`
+      );
+
+      res.json({ conversations: recentConvs, facts });
+    } catch (error) {
+      console.error("Memory summary error:", error);
+      res.status(500).json({ error: "Failed to get memory summary" });
+    }
+  });
+
+  // Save a user fact
+  app.post("/api/memory/facts", async (req, res) => {
+    try {
+      const { fact, category } = req.body;
+      if (!fact) return res.status(400).json({ error: "Fact required" });
+      const { rows } = await pool.query(
+        `INSERT INTO user_facts (fact, category) VALUES ($1, $2) RETURNING *`,
+        [fact, category || 'general']
+      );
+      res.json(rows[0]);
+    } catch (error) {
+      console.error("Error saving fact:", error);
+      res.status(500).json({ error: "Failed to save fact" });
+    }
+  });
+
+  // Get all user facts
+  app.get("/api/memory/facts", async (req, res) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT * FROM user_facts ORDER BY created_at DESC`
+      );
+      res.json(rows);
+    } catch (error) {
+      console.error("Error fetching facts:", error);
+      res.status(500).json({ error: "Failed to fetch facts" });
     }
   });
 

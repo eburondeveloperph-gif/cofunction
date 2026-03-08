@@ -231,12 +231,36 @@ export function useLiveApi({
 
           if (fc.name === 'search_memory') {
             try {
-              const res = await fetch(`/api/memory/search?q=${encodeURIComponent(fc.args.query)}`);
+              const res = await fetch(`/api/memory/search?q=${encodeURIComponent(fc.args.query as string)}`);
               const data = await res.json();
               resultText = `Found ${data.length} past messages matching "${fc.args.query}".`;
               details = { results: data };
             } catch (e: any) {
               resultText = `Error searching memory: ${e.message}`;
+              details = { error: e.message };
+            }
+          } else if (fc.name === 'save_user_fact') {
+            try {
+              const res = await fetch('/api/memory/facts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fact: fc.args.fact, category: fc.args.category }),
+              });
+              const data = await res.json();
+              resultText = `Saved fact: "${data.fact}"`;
+              details = { savedFact: data };
+            } catch (e: any) {
+              resultText = `Error saving fact: ${e.message}`;
+              details = { error: e.message };
+            }
+          } else if (fc.name === 'get_user_facts') {
+            try {
+              const res = await fetch('/api/memory/facts');
+              const data = await res.json();
+              resultText = `Retrieved ${data.length} facts about the user.`;
+              details = { facts: data };
+            } catch (e: any) {
+              resultText = `Error retrieving facts: ${e.message}`;
               details = { error: e.message };
             }
           } else if (fc.name === 'execute_local_cli') {
@@ -370,28 +394,59 @@ export function useLiveApi({
 
     let modifiedConfig = { ...config };
     
-    // Inject conversation history if available
+    // Inject conversation history and long-term memory facts if available
     if (currentConversationId) {
       try {
-        const res = await fetch(`/api/conversations/${currentConversationId}`);
+        const [res, summaryRes] = await Promise.all([
+          fetch(`/api/conversations/${currentConversationId}`),
+          fetch(`/api/memory/summary`)
+        ]);
+        
+        let historyText = '';
+        let memoryText = '';
+
         if (res.ok) {
           const data = await res.json();
           if (data.messages && data.messages.length > 0) {
-            const historyText = data.messages.map((m: any) => `${m.role.toUpperCase()}: ${m.text}`).join('\n\n');
-            const originalSystemInstruction = config.systemInstruction?.parts?.[0]?.text || '';
-            
-            modifiedConfig = {
-              ...config,
-              systemInstruction: {
-                parts: [{
-                  text: `${originalSystemInstruction}\n\n--- PAST CONVERSATION CONTEXT ---\n${historyText}`
-                }]
-              }
-            };
+            historyText = data.messages.map((m: any) => `${m.role.toUpperCase()}: ${m.text}`).join('\n\n');
           }
         }
+
+        if (summaryRes.ok) {
+          const summaryData = await summaryRes.json();
+          if (summaryData.facts && summaryData.facts.length > 0) {
+            memoryText += "KNOWN FACTS ABOUT USER:\n" + summaryData.facts.map((f: any) => `- [${f.category}] ${f.fact}`).join('\n') + "\n\n";
+          }
+          if (summaryData.conversations && summaryData.conversations.length > 0) {
+            memoryText += "RECENT CONVERSATIONS (Context):\n" + summaryData.conversations.map((c: any) => {
+              const msgs = c.recent_messages ? c.recent_messages.map((m: any) => `${m.role === 'user' ? 'U' : 'A'}: ${m.text}`).join('\n') : '';
+              return `--- ${c.title} ---\n${msgs}`;
+            }).join('\n\n');
+          }
+        }
+
+        if (historyText || memoryText) {
+          const originalSystemInstruction = config.systemInstruction?.parts?.[0]?.text || '';
+          
+          let fullContext = originalSystemInstruction;
+          if (memoryText) {
+            fullContext += `\n\n--- LONG TERM MEMORY ---\n${memoryText}`;
+          }
+          if (historyText) {
+            fullContext += `\n\n--- CURRENT CONVERSATION HISTORY ---\n${historyText}`;
+          }
+
+          modifiedConfig = {
+            ...config,
+            systemInstruction: {
+              parts: [{
+                text: fullContext
+              }]
+            }
+          };
+        }
       } catch (e) {
-        console.error('Failed to fetch conversation history for context', e);
+        console.error('Failed to fetch conversation history/memory for context', e);
       }
     }
     
