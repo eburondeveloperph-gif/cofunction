@@ -1,0 +1,7 @@
+{
+  "name": "Modulator Agent Sandbox",
+  "description": "An interactive sandbox for Gemini's native audio and function calling, featuring an advanced intent-detection and prompt-generation orchestrator.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
