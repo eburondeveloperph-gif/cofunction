@@ -75,6 +75,16 @@ export function base64ToArrayBuffer(base64: string) {
   return bytes.buffer;
 }
 
+export function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
 export function pcmBase64ToWavBase64(base64: string, sampleRate: number = 24000): string {
   const pcmBuffer = base64ToArrayBuffer(base64);
   const pcmData = new Uint8Array(pcmBuffer);
