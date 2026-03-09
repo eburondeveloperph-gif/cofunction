@@ -146,5 +146,15 @@ export const modulatorTools: FunctionCall[] = [
     },
     isEnabled: true,
     scheduling: FunctionResponseScheduling.INTERRUPT,
+  },
+  {
+    name: 'route_audio_to_partner',
+    description: 'Explicitly routes your current audio response to your partner agent. Use this when you want to speak directly to them or banter with them.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {}
+    },
+    isEnabled: true,
+    scheduling: FunctionResponseScheduling.INTERRUPT,
   }
 ];

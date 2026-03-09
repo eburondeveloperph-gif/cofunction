@@ -67,7 +67,7 @@ const renderContent = (text: string) => {
 
 export default function StreamingConsole() {
   const { clientJaKool, clientPepe, setConfig } = useLiveAPIContext();
-  const { systemPrompt, voiceJaKool, voicePepe } = useSettings();
+  const { systemPrompt, voiceToytoy, voiceFifi, setVoiceToytoy, setVoiceFifi } = useSettings();
   const { tools } = useTools();
   const turns = useLogStore(state => state.turns);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -107,8 +107,8 @@ export default function StreamingConsole() {
       }));
 
     const supportedLiveVoices = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr', 'Orus'];
-    const liveVoiceJaKool = supportedLiveVoices.includes(voiceJaKool) ? voiceJaKool : 'Orus';
-    const liveVoicePepe = supportedLiveVoices.includes(voicePepe) ? voicePepe : 'Charon';
+    const liveVoiceJaKool = supportedLiveVoices.includes(voiceToytoy) ? voiceToytoy : 'Orus';
+    const liveVoicePepe = supportedLiveVoices.includes(voiceFifi) ? voiceFifi : 'Charon';
 
     const configJaKool: any = {
       responseModalities: [Modality.AUDIO],
@@ -133,7 +133,7 @@ export default function StreamingConsole() {
     };
 
     setConfig(configJaKool, configPepe);
-  }, [setConfig, systemPrompt, tools, voiceJaKool, voicePepe]);
+  }, [setConfig, systemPrompt, tools, voiceToytoy, voiceFifi]);
 
   useEffect(() => {
     const setupAgentListeners = (targetClient: any, agentRole: string) => {
@@ -211,6 +211,7 @@ export default function StreamingConsole() {
         <div className="transcription-view" ref={scrollRef}>
           {turns.map((t, i) => (
             <div key={i} className={`transcription-entry ${t.role} ${!t.isFinal ? 'interim' : ''}`}>
+              <p className="description">Meet Toytoy and Fifi, your AI tag-team. Toytoy is the strategist, and Fifi is the executioner.</p>
               <div className="transcription-header">
                 <div className="transcription-source">
                   {t.role === 'user' ? 'You' : t.role === 'agent' ? 'Agent' : 'System'}

@@ -2,16 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GenAILiveClient } from '../../lib/genai-live-client';
 import { LiveConnectConfig, Modality, LiveServerToolCall, GoogleGenAI } from '@google/genai';
 import { AudioStreamer } from '../../lib/audio-streamer';
-import { audioContext, pcmBase64ToWavBase64 } from '../../lib/utils';
+import { audioContext, pcmBase64ToWavBase64, arrayBufferToBase64 } from '../../lib/utils';
 import VolMeterWorklet from '../../lib/worklets/vol-meter';
 import { useLogStore, useSettings } from '@/lib/state';
 
 export type UseLiveApiResults = {
-  clientJaKool: GenAILiveClient;
-  clientPepe: GenAILiveClient;
-  setConfig: (configJaKool: LiveConnectConfig, configPepe: LiveConnectConfig) => void;
-  configJaKool: LiveConnectConfig;
-  configPepe: LiveConnectConfig;
+  clientToytoy: GenAILiveClient;
+  clientFifi: GenAILiveClient;
+  setConfig: (configToytoy: LiveConnectConfig, configFifi: LiveConnectConfig) => void;
+  configToytoy: LiveConnectConfig;
+  configFifi: LiveConnectConfig;
 
   connect: () => Promise<void>;
   disconnect: () => void;
@@ -28,42 +28,45 @@ export function useLiveAPI({
   apiKey,
 }: UseLiveAPIProps): UseLiveApiResults {
   const { model } = useSettings();
-  const clientJaKool = useMemo(() => new GenAILiveClient(apiKey, model), [apiKey, model]);
-  const clientPepe = useMemo(() => new GenAILiveClient(apiKey, model), [apiKey, model]);
+  const clientToytoy = useMemo(() => new GenAILiveClient(apiKey, model), [apiKey, model]);
+  const clientFifi = useMemo(() => new GenAILiveClient(apiKey, model), [apiKey, model]);
 
-  const audioStreamerJaKoolRef = useRef<AudioStreamer | null>(null);
-  const audioStreamerPepeRef = useRef<AudioStreamer | null>(null);
+  const audioStreamerToytoyRef = useRef<AudioStreamer | null>(null);
+  const audioStreamerFifiRef = useRef<AudioStreamer | null>(null);
 
   const [volume, setVolume] = useState(0);
   const [connected, setConnected] = useState(false);
-  const [configJaKool, setConfigJaKoolState] = useState<LiveConnectConfig>({});
-  const [configPepe, setConfigPepeState] = useState<LiveConnectConfig>({});
+  const [configToytoy, setConfigToytoyState] = useState<LiveConnectConfig>({});
+  const [configFifi, setConfigFifiState] = useState<LiveConnectConfig>({});
 
-  const setConfig = useCallback((jaKoolConfig: LiveConnectConfig, pepeConfig: LiveConnectConfig) => {
-    setConfigJaKoolState(jaKoolConfig);
-    setConfigPepeState(pepeConfig);
+  const toytoyRoutingEnabledRef = useRef(false);
+  const fifiRoutingEnabledRef = useRef(false);
+
+  const setConfig = useCallback((toytoyConfig: LiveConnectConfig, fifiConfig: LiveConnectConfig) => {
+    setConfigToytoyState(toytoyConfig);
+    setConfigFifiState(fifiConfig);
   }, []);
 
   // register audio for streaming server -> speakers
   useEffect(() => {
-    if (!audioStreamerJaKoolRef.current) {
-      audioContext({ id: 'audio-out-jakool' }).then((audioCtx: AudioContext) => {
-        audioStreamerJaKoolRef.current = new AudioStreamer(audioCtx);
-        audioStreamerJaKoolRef.current
-          .addWorklet<any>('vumeter-out-jakool', VolMeterWorklet, (ev: any) => {
+    if (!audioStreamerToytoyRef.current) {
+      audioContext({ id: 'audio-out-toytoy' }).then((audioCtx: AudioContext) => {
+        audioStreamerToytoyRef.current = new AudioStreamer(audioCtx);
+        audioStreamerToytoyRef.current
+          .addWorklet<any>('vumeter-out-toytoy', VolMeterWorklet, (ev: any) => {
             setVolume(v => Math.max(v, ev.data.volume));
           })
-          .catch(err => console.error('Error adding worklet jakool:', err));
+          .catch(err => console.error('Error adding worklet Toytoy:', err));
       });
     }
-    if (!audioStreamerPepeRef.current) {
-      audioContext({ id: 'audio-out-pepe' }).then((audioCtx: AudioContext) => {
-        audioStreamerPepeRef.current = new AudioStreamer(audioCtx);
-        audioStreamerPepeRef.current
-          .addWorklet<any>('vumeter-out-pepe', VolMeterWorklet, (ev: any) => {
+    if (!audioStreamerFifiRef.current) {
+      audioContext({ id: 'audio-out-fifi' }).then((audioCtx: AudioContext) => {
+        audioStreamerFifiRef.current = new AudioStreamer(audioCtx);
+        audioStreamerFifiRef.current
+          .addWorklet<any>('vumeter-out-fifi', VolMeterWorklet, (ev: any) => {
             setVolume(v => Math.max(v, ev.data.volume));
           })
-          .catch(err => console.error('Error adding worklet pepe:', err));
+          .catch(err => console.error('Error adding worklet Fifi:', err));
       });
     }
   }, []);
@@ -84,21 +87,38 @@ export function useLiveAPI({
       }
     };
 
-    const stopAudioStreamerJaKool = () => audioStreamerJaKoolRef.current?.stop();
-    const stopAudioStreamerPepe = () => audioStreamerPepeRef.current?.stop();
+    const stopAudioStreamerToytoy = () => audioStreamerToytoyRef.current?.stop();
+    const stopAudioStreamerFifi = () => audioStreamerFifiRef.current?.stop();
 
-    const onAudioJaKool = (data: ArrayBuffer) => audioStreamerJaKoolRef.current?.addPCM16(new Uint8Array(data));
-    const onAudioPepe = (data: ArrayBuffer) => audioStreamerPepeRef.current?.addPCM16(new Uint8Array(data));
+    const onAudioToytoy = (data: ArrayBuffer) => {
+      audioStreamerToytoyRef.current?.addPCM16(new Uint8Array(data));
+      if (toytoyRoutingEnabledRef.current && clientFifi.connected) {
+        const base64Audio = arrayBufferToBase64(data);
+        clientFifi.sendRealtimeInput([{ mimeType: 'audio/pcm;rate=24000', data: base64Audio }]);
+      }
+    };
+    const onAudioFifi = (data: ArrayBuffer) => {
+      audioStreamerFifiRef.current?.addPCM16(new Uint8Array(data));
+      if (fifiRoutingEnabledRef.current && clientToytoy.connected) {
+        const base64Audio = arrayBufferToBase64(data);
+        clientToytoy.sendRealtimeInput([{ mimeType: 'audio/pcm;rate=24000', data: base64Audio }]);
+      }
+    };
 
-    clientJaKool.on('open', onOpen);
-    clientJaKool.on('close', onClose);
-    clientJaKool.on('interrupted', stopAudioStreamerJaKool);
-    clientJaKool.on('audio', onAudioJaKool);
+    const onTurnCompleteToytoy = () => { toytoyRoutingEnabledRef.current = false; };
+    const onTurnCompleteFifi = () => { fifiRoutingEnabledRef.current = false; };
 
-    clientPepe.on('open', onOpen);
-    clientPepe.on('close', onClose);
-    clientPepe.on('interrupted', stopAudioStreamerPepe);
-    clientPepe.on('audio', onAudioPepe);
+    clientToytoy.on('open', onOpen);
+    clientToytoy.on('close', onClose);
+    clientToytoy.on('interrupted', stopAudioStreamerToytoy);
+    clientToytoy.on('audio', onAudioToytoy);
+    clientToytoy.on('turncomplete', onTurnCompleteToytoy);
+
+    clientFifi.on('open', onOpen);
+    clientFifi.on('close', onClose);
+    clientFifi.on('interrupted', stopAudioStreamerFifi);
+    clientFifi.on('audio', onAudioFifi);
+    clientFifi.on('turncomplete', onTurnCompleteFifi);
 
     const makeToolCallHandler = (clientObj: GenAILiveClient) => async (toolCall: LiveServerToolCall) => {
       const functionResponses: any[] = [];
@@ -106,7 +126,15 @@ export function useLiveAPI({
         const triggerMessage = `Triggering function call: **${fc.name}**\n\`\`\`json\n${JSON.stringify(fc.args, null, 2)}\n\`\`\``;
         useLogStore.getState().addTurn({ role: 'system', text: triggerMessage, isFinal: true });
 
-        if (fc.name === 'dispatch_to_specialists') {
+        if (fc.name === 'route_audio_to_partner') {
+          if (clientObj === clientToytoy) {
+            toytoyRoutingEnabledRef.current = true;
+          } else {
+            fifiRoutingEnabledRef.current = true;
+          }
+          functionResponses.push({ id: fc.id, name: fc.name, response: { result: 'Audio routing to partner enabled for this turn.' } });
+          useLogStore.getState().addTurn({ role: 'system', text: `Audio routing enabled for ${clientObj === clientToytoy ? 'Toytoy' : 'Fifi'}`, isFinal: true });
+        } else if (fc.name === 'dispatch_to_specialists') {
           try {
             const tasks = fc.args.tasks as any[];
             const sharedContext = fc.args.sharedContext as string | undefined;
@@ -161,7 +189,7 @@ export function useLiveAPI({
                        contents: fullPrompt,
                        config: {
                          responseModalities: ['AUDIO'],
-                         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: useSettings.getState().voicePepe || 'Charon' } } },
+                         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: useSettings.getState().voiceFifi || 'Aoede' } } },
                        },
                      });
                      let audioUrl = '';
@@ -255,35 +283,36 @@ export function useLiveAPI({
           text: `Function call response:\n\`\`\`json\n${JSON.stringify(functionResponses, null, 2)}\n\`\`\``,
           isFinal: true,
         });
+        clientObj.sendToolResponse({ functionResponses: functionResponses });
       }
-
-      clientObj.sendToolResponse({ functionResponses: functionResponses });
     };
 
-    const handlerJaKool = makeToolCallHandler(clientJaKool);
-    const handlerPepe = makeToolCallHandler(clientPepe);
-    clientJaKool.on('toolcall', handlerJaKool);
-    clientPepe.on('toolcall', handlerPepe);
+    const handlerToytoy = makeToolCallHandler(clientToytoy);
+    const handlerFifi = makeToolCallHandler(clientFifi);
+    clientToytoy.on('toolcall', handlerToytoy);
+    clientFifi.on('toolcall', handlerFifi);
 
     return () => {
-      clientJaKool.off('open', onOpen);
-      clientJaKool.off('close', onClose);
-      clientJaKool.off('interrupted', stopAudioStreamerJaKool);
-      clientJaKool.off('audio', onAudioJaKool);
-      clientJaKool.off('toolcall', handlerJaKool);
+      clientToytoy.off('open', onOpen);
+      clientToytoy.off('close', onClose);
+      clientToytoy.off('interrupted', stopAudioStreamerToytoy);
+      clientToytoy.off('audio', onAudioToytoy);
+      clientToytoy.off('turncomplete', onTurnCompleteToytoy);
+      clientToytoy.off('toolcall', handlerToytoy);
 
-      clientPepe.off('open', onOpen);
-      clientPepe.off('close', onClose);
-      clientPepe.off('interrupted', stopAudioStreamerPepe);
-      clientPepe.off('audio', onAudioPepe);
-      clientPepe.off('toolcall', handlerPepe);
+      clientFifi.off('open', onOpen);
+      clientFifi.off('close', onClose);
+      clientFifi.off('interrupted', stopAudioStreamerFifi);
+      clientFifi.off('audio', onAudioFifi);
+      clientFifi.off('turncomplete', onTurnCompleteFifi);
+      clientFifi.off('toolcall', handlerFifi);
     };
-  }, [clientJaKool, clientPepe, apiKey]);
+  }, [clientToytoy, clientFifi, apiKey]);
 
   const connect = useCallback(async () => {
-    if (!configJaKool || !configPepe) throw new Error('configs have not been set');
-    clientJaKool.disconnect();
-    clientPepe.disconnect();
+    if (!configToytoy || !configFifi) throw new Error('configs have not been set');
+    clientToytoy.disconnect();
+    clientFifi.disconnect();
     
     const store = useLogStore.getState();
     let currentConversationId = store.conversationId;
@@ -326,7 +355,7 @@ export function useLiveAPI({
       }
     }
 
-    const injectContext = (config: LiveConnectConfig) => {
+    const injectContext = (config: LiveConnectConfig, voiceName: string) => {
       const si = config.systemInstruction;
       let hostText = '';
       if (typeof si === 'string') {
@@ -338,20 +367,29 @@ export function useLiveAPI({
       let fullContext = hostText;
       if (memoryText) fullContext += `\n\n--- LONG TERM MEMORY ---\n${memoryText}`;
       if (historyText) fullContext += `\n\n--- CURRENT CONVERSATION HISTORY ---\n${historyText}`;
-      return { ...config, systemInstruction: { parts: [{ text: fullContext }] } };
+      
+      return { 
+        ...config, 
+        systemInstruction: { parts: [{ text: fullContext }] },
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } }
+      };
     };
 
+    const voiceToytoy = useSettings.getState().voiceToytoy || 'Orus';
+    const voiceFifi = useSettings.getState().voiceFifi || 'Aoede';
+
     await Promise.all([
-      clientJaKool.connect(injectContext(configJaKool)),
-      clientPepe.connect(injectContext(configPepe))
+      clientToytoy.connect(injectContext(configToytoy, voiceToytoy)),
+      clientFifi.connect(injectContext(configFifi, voiceFifi))
     ]);
-  }, [clientJaKool, clientPepe, configJaKool, configPepe]);
+    setConnected(true);
+  }, [clientToytoy, clientFifi, configToytoy, configFifi]);
 
   const disconnect = useCallback(() => {
-    clientJaKool.disconnect();
-    clientPepe.disconnect();
+    clientToytoy.disconnect();
+    clientFifi.disconnect();
     setConnected(false);
-  }, [clientJaKool, clientPepe]);
+  }, [clientToytoy, clientFifi]);
 
-  return { clientJaKool, clientPepe, configJaKool, configPepe, setConfig, connect, connected, disconnect, volume };
+  return { clientToytoy, clientFifi, configToytoy, configFifi, setConfig, connect, connected, disconnect, volume };
 }
