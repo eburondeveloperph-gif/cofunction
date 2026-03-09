@@ -1,23 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
-*/
-/**
- * Copyright 2024 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GenAILiveClient } from '../../lib/genai-live-client';
 import { LiveConnectConfig, Modality, LiveServerToolCall, GoogleGenAI } from '@google/genai';
@@ -27,9 +7,11 @@ import VolMeterWorklet from '../../lib/worklets/vol-meter';
 import { useLogStore, useSettings } from '@/lib/state';
 
 export type UseLiveApiResults = {
-  client: GenAILiveClient;
-  setConfig: (config: LiveConnectConfig) => void;
-  config: LiveConnectConfig;
+  clientJaKool: GenAILiveClient;
+  clientPepe: GenAILiveClient;
+  setConfig: (configJaKool: LiveConnectConfig, configPepe: LiveConnectConfig) => void;
+  configJaKool: LiveConnectConfig;
+  configPepe: LiveConnectConfig;
 
   connect: () => Promise<void>;
   disconnect: () => void;
@@ -38,79 +20,91 @@ export type UseLiveApiResults = {
   volume: number;
 };
 
-export function useLiveApi({
-  apiKey,
-}: {
+type UseLiveAPIProps = {
   apiKey: string;
-}): UseLiveApiResults {
-  const { model } = useSettings();
-  const client = useMemo(() => new GenAILiveClient(apiKey, model), [apiKey, model]);
+};
 
-  const audioStreamerRef = useRef<AudioStreamer | null>(null);
+export function useLiveAPI({
+  apiKey,
+}: UseLiveAPIProps): UseLiveApiResults {
+  const { model } = useSettings();
+  const clientJaKool = useMemo(() => new GenAILiveClient(apiKey, model), [apiKey, model]);
+  const clientPepe = useMemo(() => new GenAILiveClient(apiKey, model), [apiKey, model]);
+
+  const audioStreamerJaKoolRef = useRef<AudioStreamer | null>(null);
+  const audioStreamerPepeRef = useRef<AudioStreamer | null>(null);
 
   const [volume, setVolume] = useState(0);
   const [connected, setConnected] = useState(false);
-  const [config, setConfig] = useState<LiveConnectConfig>({});
+  const [configJaKool, setConfigJaKoolState] = useState<LiveConnectConfig>({});
+  const [configPepe, setConfigPepeState] = useState<LiveConnectConfig>({});
+
+  const setConfig = useCallback((jaKoolConfig: LiveConnectConfig, pepeConfig: LiveConnectConfig) => {
+    setConfigJaKoolState(jaKoolConfig);
+    setConfigPepeState(pepeConfig);
+  }, []);
 
   // register audio for streaming server -> speakers
   useEffect(() => {
-    if (!audioStreamerRef.current) {
-      audioContext({ id: 'audio-out' }).then((audioCtx: AudioContext) => {
-        audioStreamerRef.current = new AudioStreamer(audioCtx);
-        audioStreamerRef.current
-          .addWorklet<any>('vumeter-out', VolMeterWorklet, (ev: any) => {
-            setVolume(ev.data.volume);
+    if (!audioStreamerJaKoolRef.current) {
+      audioContext({ id: 'audio-out-jakool' }).then((audioCtx: AudioContext) => {
+        audioStreamerJaKoolRef.current = new AudioStreamer(audioCtx);
+        audioStreamerJaKoolRef.current
+          .addWorklet<any>('vumeter-out-jakool', VolMeterWorklet, (ev: any) => {
+            setVolume(v => Math.max(v, ev.data.volume));
           })
-          .then(() => {
-            // Successfully added worklet
-          })
-          .catch(err => {
-            console.error('Error adding worklet:', err);
-          });
+          .catch(err => console.error('Error adding worklet jakool:', err));
       });
     }
-  }, [audioStreamerRef]);
+    if (!audioStreamerPepeRef.current) {
+      audioContext({ id: 'audio-out-pepe' }).then((audioCtx: AudioContext) => {
+        audioStreamerPepeRef.current = new AudioStreamer(audioCtx);
+        audioStreamerPepeRef.current
+          .addWorklet<any>('vumeter-out-pepe', VolMeterWorklet, (ev: any) => {
+            setVolume(v => Math.max(v, ev.data.volume));
+          })
+          .catch(err => console.error('Error adding worklet pepe:', err));
+      });
+    }
+  }, []);
 
   useEffect(() => {
+    let connectedCount = 0;
     const onOpen = () => {
+      connectedCount++;
+      if (connectedCount > 0) Object.assign(window, { __anyConnected: true }); // safety
       setConnected(true);
     };
 
     const onClose = () => {
-      setConnected(false);
-    };
-
-    const stopAudioStreamer = () => {
-      if (audioStreamerRef.current) {
-        audioStreamerRef.current.stop();
+      connectedCount--;
+      if (connectedCount <= 0) {
+        setConnected(false);
+        connectedCount = 0;
       }
     };
 
-    const onAudio = (data: ArrayBuffer) => {
-      if (audioStreamerRef.current) {
-        audioStreamerRef.current.addPCM16(new Uint8Array(data));
-      }
-    };
+    const stopAudioStreamerJaKool = () => audioStreamerJaKoolRef.current?.stop();
+    const stopAudioStreamerPepe = () => audioStreamerPepeRef.current?.stop();
 
-    // Bind event listeners
-    client.on('open', onOpen);
-    client.on('close', onClose);
-    client.on('interrupted', stopAudioStreamer);
-    client.on('audio', onAudio);
+    const onAudioJaKool = (data: ArrayBuffer) => audioStreamerJaKoolRef.current?.addPCM16(new Uint8Array(data));
+    const onAudioPepe = (data: ArrayBuffer) => audioStreamerPepeRef.current?.addPCM16(new Uint8Array(data));
 
-    const onToolCall = async (toolCall: LiveServerToolCall) => {
+    clientJaKool.on('open', onOpen);
+    clientJaKool.on('close', onClose);
+    clientJaKool.on('interrupted', stopAudioStreamerJaKool);
+    clientJaKool.on('audio', onAudioJaKool);
+
+    clientPepe.on('open', onOpen);
+    clientPepe.on('close', onClose);
+    clientPepe.on('interrupted', stopAudioStreamerPepe);
+    clientPepe.on('audio', onAudioPepe);
+
+    const makeToolCallHandler = (clientObj: GenAILiveClient) => async (toolCall: LiveServerToolCall) => {
       const functionResponses: any[] = [];
-
       for (const fc of toolCall.functionCalls) {
-        // Log the function call trigger
-        const triggerMessage = `Triggering function call: **${
-          fc.name
-        }**\n\`\`\`json\n${JSON.stringify(fc.args, null, 2)}\n\`\`\``;
-        useLogStore.getState().addTurn({
-          role: 'system',
-          text: triggerMessage,
-          isFinal: true,
-        });
+        const triggerMessage = `Triggering function call: **${fc.name}**\n\`\`\`json\n${JSON.stringify(fc.args, null, 2)}\n\`\`\``;
+        useLogStore.getState().addTurn({ role: 'system', text: triggerMessage, isFinal: true });
 
         if (fc.name === 'dispatch_to_specialists') {
           try {
@@ -118,7 +112,6 @@ export function useLiveApi({
             const sharedContext = fc.args.sharedContext as string | undefined;
             const ai = new GoogleGenAI({ apiKey });
 
-            // Fire and forget: execute tasks in the background
             (async () => {
               for (const task of tasks) {
                 const fullPrompt = sharedContext 
@@ -138,7 +131,7 @@ export function useLiveApi({
                   let isImage = false;
                   let isVideo = false;
 
-                  if (category.includes('image generation') || category.includes('image creation')) {
+                  if (category.includes('image')) {
                      modelName = 'gemini-2.5-flash-image';
                      isImage = true;
                   } else if (category.includes('video')) {
@@ -151,13 +144,7 @@ export function useLiveApi({
                   }
 
                   if (isImage) {
-                     const response = await ai.models.generateContent({
-                       model: modelName,
-                       contents: fullPrompt,
-                       config: {
-                         // Optional: Add aspect ratio or other image configs if needed
-                       }
-                     });
+                     const response = await ai.models.generateContent({ model: modelName, contents: fullPrompt });
                      let imageUrl = '';
                      for (const part of response.candidates?.[0]?.content?.parts || []) {
                        if (part.inlineData) {
@@ -167,20 +154,14 @@ export function useLiveApi({
                      }
                      resultText = imageUrl ? `![Generated Image](${imageUrl})` : 'Failed to generate image.';
                   } else if (isVideo) {
-                     // For video, we need a paid API key, so we'll just mock it unless the user has one.
-                     // To keep it simple, we'll just acknowledge it.
-                     resultText = `Started video generation for prompt: ${fullPrompt}. (Note: Video generation requires a paid API key and takes several minutes, so it is mocked here.)`;
+                     resultText = `Started video generation for prompt: ${fullPrompt}. (Note: Mocked logic)`;
                   } else if (modelName === 'gemini-2.5-flash-preview-tts') {
                      const response = await ai.models.generateContent({
                        model: modelName,
                        contents: fullPrompt,
                        config: {
                          responseModalities: ['AUDIO'],
-                         speechConfig: {
-                           voiceConfig: {
-                             prebuiltVoiceConfig: { voiceName: useSettings.getState().voice },
-                           },
-                         },
+                         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: useSettings.getState().voicePepe || 'Charon' } } },
                        },
                      });
                      let audioUrl = '';
@@ -193,39 +174,22 @@ export function useLiveApi({
                      }
                      resultText = audioUrl ? `Generated Audio:\n<audio controls src="${audioUrl}"></audio>` : 'Failed to generate audio.';
                   } else {
-                     const response = await ai.models.generateContent({
-                       model: modelName,
-                       contents: fullPrompt,
-                     });
+                     const response = await ai.models.generateContent({ model: modelName, contents: fullPrompt });
                      resultText = response.text || 'No output generated.';
                   }
                 } catch (err: any) {
                   resultText = `Error executing task: ${err.message}`;
                 }
 
-                useLogStore.getState().addTurn({
-                  role: 'system',
-                  text: `Task Result for **${task.detectedTaskType}**:\n${resultText}`,
-                  isFinal: true,
-                });
+                useLogStore.getState().addTurn({ role: 'system', text: `Task Result for **${task.detectedTaskType}**:\n${resultText}`, isFinal: true });
               }
             })();
 
-            // Return immediately to unblock the voice agent
-            functionResponses.push({
-              id: fc.id,
-              name: fc.name,
-              response: { result: 'Tasks have been dispatched and are executing in the background. You can continue the conversation while they process.' },
-            });
+            functionResponses.push({ id: fc.id, name: fc.name, response: { result: 'Dispatched tasks.' } });
           } catch (err: any) {
-            functionResponses.push({
-              id: fc.id,
-              name: fc.name,
-              response: { error: err.message },
-            });
+             functionResponses.push({ id: fc.id, name: fc.name, response: { error: err.message } });
           }
         } else {
-          // Prepare the response for other tools
           let resultText = `Successfully executed ${fc.name}`;
           let details: any = { status: 'completed' };
 
@@ -236,38 +200,31 @@ export function useLiveApi({
               resultText = `Found ${data.length} past messages matching "${fc.args.query}".`;
               details = { results: data };
             } catch (e: any) {
-              resultText = `Error searching memory: ${e.message}`;
-              details = { error: e.message };
+              resultText = `Error: ${e.message}`; details = { error: e.message };
             }
           } else if (fc.name === 'save_user_fact') {
             try {
               const res = await fetch('/api/memory/facts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fact: fc.args.fact, category: fc.args.category }),
               });
               const data = await res.json();
-              resultText = `Saved fact: "${data.fact}"`;
-              details = { savedFact: data };
+              resultText = `Saved fact: "${data.fact}"`; details = { savedFact: data };
             } catch (e: any) {
-              resultText = `Error saving fact: ${e.message}`;
-              details = { error: e.message };
+              resultText = `Error: ${e.message}`; details = { error: e.message };
             }
           } else if (fc.name === 'get_user_facts') {
             try {
               const res = await fetch('/api/memory/facts');
               const data = await res.json();
-              resultText = `Retrieved ${data.length} facts about the user.`;
-              details = { facts: data };
+              resultText = `Retrieved ${data.length} facts about the user.`; details = { facts: data };
             } catch (e: any) {
-              resultText = `Error retrieving facts: ${e.message}`;
-              details = { error: e.message };
+              resultText = `Error: ${e.message}`; details = { error: e.message };
             }
           } else if (fc.name === 'execute_local_cli') {
             try {
               const res = await fetch('/api/cli', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ command: fc.args.command }),
               });
               const data = await res.json();
@@ -275,113 +232,65 @@ export function useLiveApi({
                 resultText = `Command executed successfully.\nStdout: ${data.stdout || 'none'}\nStderr: ${data.stderr || 'none'}`;
                 details = { stdout: data.stdout, stderr: data.stderr };
               } else {
-                resultText = `Command failed: ${data.error}`;
-                details = { error: data.error, stderr: data.stderr };
+                resultText = `Command failed: ${data.error}`; details = { error: data.error, stderr: data.stderr };
               }
             } catch (e: any) {
-              resultText = `Error executing CLI command: ${e.message}`;
-              details = { error: e.message };
+              resultText = `Error: ${e.message}`; details = { error: e.message };
             }
           } else if (fc.name === 'create_music_lyra') {
-            resultText = `Started music generation via Lyra for prompt: "${fc.args.prompt}". (Note: Lyra requires a specialized backend endpoint or API key, so this is mocked here.)`;
-            details = { status: 'generating', prompt: fc.args.prompt };
+            resultText = `Started music generation via Lyra for prompt: "${fc.args.prompt}".`; details = { status: 'generating' };
           } else if (fc.name === 'generate_code') {
-            resultText = `Started code generation for prompt: "${fc.args.prompt}".`;
-            details = { status: 'generating', prompt: fc.args.prompt };
-          } else if (fc.name === 'find_route') {
-            resultText = `Found route to ${fc.args.destination} via ${fc.args.modeOfTransport || 'driving'}. Estimated time: 25 mins.`;
-            details = { eta: '25 mins', distance: '12 km' };
-          } else if (fc.name === 'find_nearby_places') {
-            resultText = `Found 3 ${fc.args.placeType}s nearby.`;
-            details = { places: ['Place A', 'Place B', 'Place C'] };
-          } else if (fc.name === 'get_traffic_info') {
-            resultText = `Traffic at ${fc.args.location} is currently moderate.`;
-            details = { trafficLevel: 'moderate' };
-          } else if (fc.name === 'create_calendar_event') {
-            resultText = `Created calendar event: "${fc.args.summary}" from ${fc.args.startTime} to ${fc.args.endTime}.`;
-            details = { eventId: 'evt_12345' };
-          } else if (fc.name === 'send_email') {
-            resultText = `Sent email to ${fc.args.recipient} with subject "${fc.args.subject}".`;
-            details = { emailId: 'msg_98765' };
-          } else if (fc.name === 'set_reminder') {
-            resultText = `Set reminder for "${fc.args.task}" at ${fc.args.time}.`;
-            details = { reminderId: 'rem_54321' };
-          } else if (fc.name === 'start_return') {
-            resultText = `Started return process for order ${fc.args.orderId} (Item: ${fc.args.itemName}).`;
-            details = { returnId: 'ret_112233' };
-          } else if (fc.name === 'get_order_status') {
-            resultText = `Order ${fc.args.orderId || 'unknown'} is currently in transit.`;
-            details = { status: 'in_transit', expectedDelivery: 'Tomorrow' };
-          } else if (fc.name === 'speak_to_representative') {
-            resultText = `Escalating to human representative. Reason: ${fc.args.reason}`;
-            details = { queuePosition: 3, estimatedWait: '5 mins' };
+            resultText = `Started code generation for prompt: "${fc.args.prompt}".`; details = { status: 'generating' };
           }
-
-          const responsePayload = {
-            result: resultText,
-            details: details,
-            timestamp: new Date().toISOString()
-          };
           
-          functionResponses.push({
-            id: fc.id,
-            name: fc.name,
-            response: responsePayload,
-          });
-          
-          useLogStore.getState().addTurn({
-            role: 'system',
-            text: `Task Result for **${fc.name}**:\n${resultText}`,
-            isFinal: true,
-          });
+          const responsePayload = { result: resultText, details, timestamp: new Date().toISOString() };
+          functionResponses.push({ id: fc.id, name: fc.name, response: responsePayload });
+          useLogStore.getState().addTurn({ role: 'system', text: `Task Result for **${fc.name}**:\n${resultText}`, isFinal: true });
         }
       }
 
-      // Log the function call response
       if (functionResponses.length > 0) {
-        const responseMessage = `Function call response:\n\`\`\`json\n${JSON.stringify(
-          functionResponses,
-          null,
-          2,
-        )}\n\`\`\``;
         useLogStore.getState().addTurn({
           role: 'system',
-          text: responseMessage,
+          text: `Function call response:\n\`\`\`json\n${JSON.stringify(functionResponses, null, 2)}\n\`\`\``,
           isFinal: true,
         });
       }
 
-      client.sendToolResponse({ functionResponses: functionResponses });
+      clientObj.sendToolResponse({ functionResponses: functionResponses });
     };
 
-    client.on('toolcall', onToolCall);
+    const handlerJaKool = makeToolCallHandler(clientJaKool);
+    const handlerPepe = makeToolCallHandler(clientPepe);
+    clientJaKool.on('toolcall', handlerJaKool);
+    clientPepe.on('toolcall', handlerPepe);
 
     return () => {
-      // Clean up event listeners
-      client.off('open', onOpen);
-      client.off('close', onClose);
-      client.off('interrupted', stopAudioStreamer);
-      client.off('audio', onAudio);
-      client.off('toolcall', onToolCall);
+      clientJaKool.off('open', onOpen);
+      clientJaKool.off('close', onClose);
+      clientJaKool.off('interrupted', stopAudioStreamerJaKool);
+      clientJaKool.off('audio', onAudioJaKool);
+      clientJaKool.off('toolcall', handlerJaKool);
+
+      clientPepe.off('open', onOpen);
+      clientPepe.off('close', onClose);
+      clientPepe.off('interrupted', stopAudioStreamerPepe);
+      clientPepe.off('audio', onAudioPepe);
+      clientPepe.off('toolcall', handlerPepe);
     };
-  }, [client]);
+  }, [clientJaKool, clientPepe, apiKey]);
 
   const connect = useCallback(async () => {
-    if (!config) {
-      throw new Error('config has not been set');
-    }
-    client.disconnect();
+    if (!configJaKool || !configPepe) throw new Error('configs have not been set');
+    clientJaKool.disconnect();
+    clientPepe.disconnect();
     
     const store = useLogStore.getState();
     let currentConversationId = store.conversationId;
     
     if (!currentConversationId) {
       try {
-        const res = await fetch('/api/conversations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: 'New Conversation' }),
-        });
+        const res = await fetch('/api/conversations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'New Conversation' }) });
         if (res.ok) {
           const data = await res.json();
           store.setConversationId(data.id);
@@ -392,79 +301,57 @@ export function useLiveApi({
       }
     }
 
-    let modifiedConfig = { ...config };
-    
-    // Inject conversation history and long-term memory facts if available
+    let historyText = '';
+    let memoryText = '';
     if (currentConversationId) {
       try {
         const [res, summaryRes] = await Promise.all([
           fetch(`/api/conversations/${currentConversationId}`),
           fetch(`/api/memory/summary`)
         ]);
-        
-        let historyText = '';
-        let memoryText = '';
-
         if (res.ok) {
           const data = await res.json();
-          if (data.messages && data.messages.length > 0) {
+          if (data.messages?.length > 0) {
             historyText = data.messages.map((m: any) => `${m.role.toUpperCase()}: ${m.text}`).join('\n\n');
           }
         }
-
         if (summaryRes.ok) {
           const summaryData = await summaryRes.json();
-          if (summaryData.facts && summaryData.facts.length > 0) {
+          if (summaryData.facts?.length > 0) {
             memoryText += "KNOWN FACTS ABOUT USER:\n" + summaryData.facts.map((f: any) => `- [${f.category}] ${f.fact}`).join('\n') + "\n\n";
           }
-          if (summaryData.conversations && summaryData.conversations.length > 0) {
-            memoryText += "RECENT CONVERSATIONS (Context):\n" + summaryData.conversations.map((c: any) => {
-              const msgs = c.recent_messages ? c.recent_messages.map((m: any) => `${m.role === 'user' ? 'U' : 'A'}: ${m.text}`).join('\n') : '';
-              return `--- ${c.title} ---\n${msgs}`;
-            }).join('\n\n');
-          }
-        }
-
-        if (historyText || memoryText) {
-          const originalSystemInstruction = config.systemInstruction?.parts?.[0]?.text || '';
-          
-          let fullContext = originalSystemInstruction;
-          if (memoryText) {
-            fullContext += `\n\n--- LONG TERM MEMORY ---\n${memoryText}`;
-          }
-          if (historyText) {
-            fullContext += `\n\n--- CURRENT CONVERSATION HISTORY ---\n${historyText}`;
-          }
-
-          modifiedConfig = {
-            ...config,
-            systemInstruction: {
-              parts: [{
-                text: fullContext
-              }]
-            }
-          };
         }
       } catch (e) {
-        console.error('Failed to fetch conversation history/memory for context', e);
+        console.error('Failed to fetch context', e);
       }
     }
-    
-    await client.connect(modifiedConfig);
-  }, [client, config]);
 
-  const disconnect = useCallback(async () => {
-    client.disconnect();
+    const injectContext = (config: LiveConnectConfig) => {
+      const si = config.systemInstruction;
+      let hostText = '';
+      if (typeof si === 'string') {
+        hostText = si;
+      } else if (si && typeof si === 'object' && 'parts' in si && Array.isArray((si as any).parts)) {
+        hostText = (si as any).parts[0]?.text || '';
+      }
+      
+      let fullContext = hostText;
+      if (memoryText) fullContext += `\n\n--- LONG TERM MEMORY ---\n${memoryText}`;
+      if (historyText) fullContext += `\n\n--- CURRENT CONVERSATION HISTORY ---\n${historyText}`;
+      return { ...config, systemInstruction: { parts: [{ text: fullContext }] } };
+    };
+
+    await Promise.all([
+      clientJaKool.connect(injectContext(configJaKool)),
+      clientPepe.connect(injectContext(configPepe))
+    ]);
+  }, [clientJaKool, clientPepe, configJaKool, configPepe]);
+
+  const disconnect = useCallback(() => {
+    clientJaKool.disconnect();
+    clientPepe.disconnect();
     setConnected(false);
-  }, [setConnected, client]);
+  }, [clientJaKool, clientPepe]);
 
-  return {
-    client,
-    config,
-    setConfig,
-    connect,
-    connected,
-    disconnect,
-    volume,
-  };
+  return { clientJaKool, clientPepe, configJaKool, configPepe, setConfig, connect, connected, disconnect, volume };
 }

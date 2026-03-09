@@ -15,7 +15,7 @@ const AVAILABLE_MODELS = [
 
 export default function Sidebar() {
   const { isSidebarOpen, toggleSidebar } = useUI();
-  const { systemPrompt, model, voice, setSystemPrompt, setModel, setVoice } =
+  const { systemPrompt, model, voiceJaKool, voicePepe, setSystemPrompt, setModel, setVoiceJaKool, setVoicePepe } =
     useSettings();
   const { tools, toggleTool, addTool, removeTool, updateTool } = useTools();
   const { connected } = useLiveAPIContext();
@@ -116,8 +116,18 @@ export default function Sidebar() {
                 </select>
               </label>
               <label>
-                Voice
-                <select value={voice} onChange={e => setVoice(e.target.value)}>
+                Voice (Ja Kool)
+                <select value={voiceJaKool} onChange={e => setVoiceJaKool(e.target.value)}>
+                  {AVAILABLE_VOICES.map(v => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Voice (Pepe)
+                <select value={voicePepe} onChange={e => setVoicePepe(e.target.value)}>
                   {AVAILABLE_VOICES.map(v => (
                     <option key={v} value={v}>
                       {v}

@@ -35,7 +35,7 @@ function ControlTray({ children }: ControlTrayProps) {
   const [muted, setMuted] = useState(false);
   const connectButtonRef = useRef<HTMLButtonElement>(null);
 
-  const { client, connected, connect, disconnect } = useLiveAPIContext();
+  const { clientJaKool, clientPepe, connected, connect, disconnect } = useLiveAPIContext();
 
   useEffect(() => {
     // FIX: Cannot find name 'connectButton'. Did you mean 'connectButtonRef'?
@@ -53,12 +53,13 @@ function ControlTray({ children }: ControlTrayProps) {
 
   useEffect(() => {
     const onData = (base64: string) => {
-      client.sendRealtimeInput([
-        {
-          mimeType: 'audio/pcm;rate=16000',
-          data: base64,
-        },
-      ]);
+      const pcmData = { mimeType: 'audio/pcm;rate=16000', data: base64 };
+      if (clientJaKool.connected) {
+        clientJaKool.sendRealtimeInput([pcmData]);
+      }
+      if (clientPepe.connected) {
+        clientPepe.sendRealtimeInput([pcmData]);
+      }
     };
     if (connected && !muted && audioRecorder) {
       audioRecorder.on('data', onData);
@@ -69,7 +70,7 @@ function ControlTray({ children }: ControlTrayProps) {
     return () => {
       audioRecorder.off('data', onData);
     };
-  }, [connected, client, muted, audioRecorder]);
+  }, [connected, clientJaKool, clientPepe, muted, audioRecorder]);
 
   const handleMicClick = () => {
     if (connected) {
